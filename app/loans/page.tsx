@@ -79,19 +79,85 @@ export default function LoansPage() {
   };
 
   const getNextEMI = () => {
-    let nextEMI: { loan: Loan; date: Date; daysUntil: number } | null = null;
+    const currentDate = new Date();
+    const nextMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+    const nextMonthStr = nextMonth.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    
+    let totalNextMonthEMI = 0;
+    let closestDueDate: Date | null = null;
+    let minDaysUntil = Infinity;
 
     for (const loan of loans) {
-      const nextDate = getNextEMIDate(loan);
-      if (nextDate) {
-        const daysUntil = getDaysUntilDue(nextDate);
-        if (!nextEMI || daysUntil < nextEMI.daysUntil) {
-          nextEMI = { loan, date: nextDate, daysUntil };
+      const unpaidPayments = loan.payments.filter(p => !p.isPaid);
+      
+      for (const payment of unpaidPayments) {
+        const startDate = new Date(loan.startDate);
+        const emiDate = new Date(startDate.getFullYear(), startDate.getMonth() + payment.monthNumber - 1, 1);
+        
+        // Check if EMI is in next month or current month
+        if (emiDate.getFullYear() === nextMonth.getFullYear() && emiDate.getMonth() === nextMonth.getMonth()) {
+          totalNextMonthEMI += loan.emiAmount;
+          const daysUntil = getDaysUntilDue(emiDate);
+          if (daysUntil < minDaysUntil) {
+            minDaysUntil = daysUntil;
+            closestDueDate = emiDate;
+          }
+        } else if (emiDate.getTime() <= nextMonth.getTime()) {
+          // Include overdue and current month EMIs as well
+          totalNextMonthEMI += loan.emiAmount;
+          const daysUntil = getDaysUntilDue(emiDate);
+          if (daysUntil < minDaysUntil) {
+            minDaysUntil = daysUntil;
+            closestDueDate = emiDate;
+          }
         }
       }
     }
 
-    return nextEMI;
+    return totalNextMonthEMI > 0
+      ? { total: totalNextMonthEMI, daysUntil: minDaysUntil, date: closestDueDate!, monthStr: nextMonthStr }
+      : null;
+  };
+
+  const getUrgencyStyles = (daysUntil: number) => {
+    if (daysUntil < 0) {
+      return {
+        bg: 'bg-red-500',
+        text: 'text-white',
+        border: 'border-red-600',
+        label: 'OVERDUE',
+      };
+    }
+    if (daysUntil <= 3) {
+      return {
+        bg: 'bg-red-100',
+        text: 'text-red-700',
+        border: 'border-red-400',
+        label: `Due in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`,
+      };
+    }
+    if (daysUntil <= 7) {
+      return {
+        bg: 'bg-orange-100',
+        text: 'text-orange-700',
+        border: 'border-orange-400',
+        label: `Due in ${daysUntil} days`,
+      };
+    }
+    if (daysUntil <= 15) {
+      return {
+        bg: 'bg-yellow-100',
+        text: 'text-yellow-700',
+        border: 'border-yellow-400',
+        label: `Due in ${daysUntil} days`,
+      };
+    }
+    return {
+      bg: 'bg-blue-100',
+      text: 'text-blue-700',
+      border: 'border-blue-400',
+      label: `Due in ${daysUntil} days`,
+    };
   };
 
   const nextEMI = getNextEMI();
@@ -107,8 +173,8 @@ export default function LoansPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-6 shadow-lg">
-        <div className="max-w-4xl mx-auto">
+      <div className="bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-600 text-white shadow-xl">
+        <div className="max-w-4xl mx-auto px-6 py-6">
           <div className="flex items-center gap-4 mb-6">
             <button
               onClick={() => router.push('/')}
@@ -119,19 +185,17 @@ export default function LoansPage() {
             <h1 className="text-2xl font-bold">Loans & EMIs</h1>
           </div>
 
-          {/* Next EMI Alert */}
+          {/* Next EMI Summary Card */}
           {nextEMI && (
-            <div className={`bg-white/10 backdrop-blur rounded-xl p-4 ${getEMIUrgencyColor(nextEMI.daysUntil).replace('text-', 'border-l-4 border-')}`}>
-              <div className="flex items-center gap-2 mb-2">
-                <Clock size={20} />
-                <span className="font-semibold">Next EMI Due</span>
+            <div className={`${getUrgencyStyles(nextEMI.daysUntil).bg} ${getUrgencyStyles(nextEMI.daysUntil).text} rounded-2xl p-6 shadow-lg border-2 ${getUrgencyStyles(nextEMI.daysUntil).border}`}>
+              <div className="text-sm font-semibold uppercase tracking-wider opacity-80 mb-2">
+                Next Month EMI ({nextEMI.monthStr})
               </div>
-              <div className="text-2xl font-bold mb-1">
-                {formatCurrency(nextEMI.loan.emiAmount)}
+              <div className="text-5xl font-bold mb-3">
+                ₹{nextEMI.total.toFixed(2)}
               </div>
-              <div className="text-sm opacity-90">
-                {nextEMI.loan.name} • {nextEMI.date.toLocaleDateString()} 
-                {nextEMI.daysUntil >= 0 ? ` (${nextEMI.daysUntil} days)` : ' (Overdue)'}
+              <div className="text-sm font-semibold">
+                {getUrgencyStyles(nextEMI.daysUntil).label}
               </div>
             </div>
           )}
@@ -142,19 +206,20 @@ export default function LoansPage() {
       <div className="max-w-4xl mx-auto px-6 py-4">
         <button
           onClick={() => setShowAddDialog(true)}
-          className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition shadow-lg"
+          className="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition shadow-md"
         >
           <Plus size={20} />
-          Add Loan
+          Add New Loan
         </button>
       </div>
 
       {/* Loans List */}
       <div className="max-w-4xl mx-auto px-6 pb-8">
         {loans.length === 0 ? (
-          <div className="text-center py-12">
-            <div className="text-gray-400 mb-4">No loans yet</div>
-            <p className="text-sm text-gray-400">Add a loan to start tracking EMIs</p>
+          <div className="text-center py-12 bg-white rounded-2xl shadow-sm">
+            <div className="text-5xl mb-4">🏦</div>
+            <p className="text-gray-600 font-medium">No loans yet</p>
+            <p className="text-sm text-gray-400 mt-2">Add a loan to start tracking EMIs</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -165,17 +230,22 @@ export default function LoansPage() {
               const progress = (paidPayments.length / loan.payments.length) * 100;
 
               return (
-                <div key={loan.id} className="bg-white rounded-xl p-6 shadow-sm">
+                <div key={loan.id} className="bg-white rounded-2xl p-6 shadow-sm hover:shadow-md transition">
                   <div className="flex justify-between items-start mb-4">
                     <div>
                       <h3 className="text-xl font-bold text-gray-800">{loan.name}</h3>
                       <div className="text-sm text-gray-500 mt-1">
-                        Started {new Date(loan.startDate).toLocaleDateString()}
+                        Started {new Date(loan.startDate).toLocaleDateString('en-US', {
+                          day: 'numeric',
+                          month: 'short',
+                          year: 'numeric',
+                        })}
                       </div>
                     </div>
                     <button
                       onClick={() => handleDeleteLoan(loan.id)}
                       className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition"
+                      title="Delete loan"
                     >
                       <Trash2 size={20} />
                     </button>
@@ -184,7 +254,7 @@ export default function LoansPage() {
                   <div className="grid grid-cols-2 gap-4 mb-4">
                     <div>
                       <div className="text-sm text-gray-500">Principal</div>
-                      <div className="text-lg font-semibold">{formatCurrency(loan.principal)}</div>
+                      <div className="text-lg font-semibold">₹{loan.principal.toFixed(2)}</div>
                     </div>
                     <div>
                       <div className="text-sm text-gray-500">Interest Rate</div>
@@ -193,51 +263,54 @@ export default function LoansPage() {
                     <div>
                       <div className="text-sm text-gray-500">EMI Amount</div>
                       <div className="text-lg font-semibold text-orange-600">
-                        {formatCurrency(loan.emiAmount)}
+                        ₹{loan.emiAmount.toFixed(2)}
                       </div>
                     </div>
                     <div>
                       <div className="text-sm text-gray-500">Total Interest</div>
-                      <div className="text-lg font-semibold">{formatCurrency(loan.totalInterest)}</div>
+                      <div className="text-lg font-semibold">₹{loan.totalInterest.toFixed(2)}</div>
                     </div>
                   </div>
 
                   {/* Progress Bar */}
                   <div className="mb-4">
                     <div className="flex justify-between text-sm text-gray-600 mb-2">
-                      <span>Progress</span>
-                      <span>{paidPayments.length} / {loan.payments.length} paid</span>
+                      <span>Payment Progress</span>
+                      <span className="font-semibold">{paidPayments.length} / {loan.payments.length} paid</span>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="w-full bg-gray-200 rounded-full h-3">
                       <div
-                        className="bg-green-500 h-2 rounded-full transition-all"
+                        className="bg-gradient-to-r from-green-400 to-green-500 h-3 rounded-full transition-all shadow-sm"
                         style={{ width: `${progress}%` }}
                       />
                     </div>
                   </div>
 
-                  {/* Next Payment */}
-                  {nextPayment && (
+                  {/* Next Payment or Completion */}
+                  {nextPayment ? (
                     <div className="border-t pt-4">
                       <div className="flex justify-between items-center">
                         <div>
-                          <div className="text-sm text-gray-500">Next EMI</div>
-                          <div className="font-semibold">Month {nextPayment.monthNumber}</div>
+                          <div className="text-sm text-gray-500">Next EMI Payment</div>
+                          <div className="font-semibold text-gray-800">
+                            Month {nextPayment.monthNumber} of {loan.durationMonths}
+                          </div>
                         </div>
                         <button
                           onClick={() => handlePayEMI(loan.id, nextPayment.monthNumber)}
-                          className="flex items-center gap-2 px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition"
+                          className="flex items-center gap-2 px-5 py-2.5 bg-green-500 hover:bg-green-600 text-white font-semibold rounded-lg transition shadow-sm"
                         >
                           <CheckCircle size={18} />
                           Mark as Paid
                         </button>
                       </div>
                     </div>
-                  )}
-
-                  {unpaidPayments.length === 0 && (
-                    <div className="border-t pt-4 text-center text-green-600 font-semibold">
-                      ✓ All EMIs Paid!
+                  ) : (
+                    <div className="border-t pt-4 text-center">
+                      <div className="flex items-center justify-center gap-2 text-green-600 font-bold">
+                        <CheckCircle size={24} />
+                        <span>Loan Fully Paid!</span>
+                      </div>
                     </div>
                   )}
                 </div>

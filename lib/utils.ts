@@ -100,3 +100,65 @@ export function sortByDate<T extends { date: string }>(
     return order === 'desc' ? dateB - dateA : dateA - dateB;
   });
 }
+
+export interface PendingEMI {
+  id: string;
+  loanId: string;
+  loanName: string;
+  amount: number;
+  date: string;
+  monthKey: string;
+  monthNumber: number;
+  isPending: true;
+}
+
+export function getPendingEMIs(loans: Array<{
+  id: string;
+  name: string;
+  emiAmount: number;
+  startDate: string;
+  payments: Array<{ monthNumber: number; isPaid: boolean }>;
+}>): PendingEMI[] {
+  const pendingEMIs: PendingEMI[] = [];
+  const currentDate = new Date();
+  const currentMonth = getMonthKey(currentDate.toISOString());
+  const nextMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1);
+  const nextMonthKey = getMonthKey(nextMonth.toISOString());
+
+  for (const loan of loans) {
+    const unpaidPayments = loan.payments.filter(p => !p.isPaid);
+    
+    for (const payment of unpaidPayments) {
+      const startDate = new Date(loan.startDate);
+      const emiDate = new Date(startDate.getFullYear(), startDate.getMonth() + payment.monthNumber - 1, 1);
+      const emiMonthKey = getMonthKey(emiDate.toISOString());
+      
+      // Include EMIs for current and next month only
+      if (emiMonthKey === currentMonth || emiMonthKey === nextMonthKey) {
+        pendingEMIs.push({
+          id: `pending-${loan.id}-${payment.monthNumber}`,
+          loanId: loan.id,
+          loanName: loan.name,
+          amount: loan.emiAmount,
+          date: emiDate.toISOString(),
+          monthKey: emiMonthKey,
+          monthNumber: payment.monthNumber,
+          isPending: true,
+        });
+      }
+    }
+  }
+
+  return pendingEMIs;
+}
+
+export function calculateTotalPendingEMI(loans: Array<{
+  id: string;
+  name: string;
+  emiAmount: number;
+  startDate: string;
+  payments: Array<{ monthNumber: number; isPaid: boolean }>;
+}>): number {
+  const pendingEMIs = getPendingEMIs(loans);
+  return pendingEMIs.reduce((sum, emi) => sum + emi.amount, 0);
+}

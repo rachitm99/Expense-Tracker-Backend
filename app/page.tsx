@@ -2,20 +2,21 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, LogOut, TrendingUp, TrendingDown, Wallet } from 'lucide-react';
-import { Transaction } from '@/types';
-import { formatCurrency, groupTransactionsByMonth, sortByDate } from '@/lib/utils';
+import { Plus, LogOut, Briefcase } from 'lucide-react';
+import { Transaction, Loan } from '@/types';
+import { formatCurrency, groupTransactionsByMonth, sortByDate, getPendingEMIs, calculateTotalPendingEMI, PendingEMI } from '@/lib/utils';
 
 export default function DashboardPage() {
   const router = useRouter();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [isIncome, setIsIncome] = useState(false);
 
   useEffect(() => {
     checkAuth();
-    fetchTransactions();
+    fetchData();
   }, []);
 
   const checkAuth = async () => {
@@ -29,15 +30,24 @@ export default function DashboardPage() {
     }
   };
 
-  const fetchTransactions = async () => {
+  const fetchData = async () => {
     try {
-      const response = await fetch('/api/transactions');
-      if (response.ok) {
-        const data = await response.json();
+      const [transactionsRes, loansRes] = await Promise.all([
+        fetch('/api/transactions'),
+        fetch('/api/loans'),
+      ]);
+
+      if (transactionsRes.ok) {
+        const data = await transactionsRes.json();
         setTransactions(data.transactions || []);
       }
+
+      if (loansRes.ok) {
+        const data = await loansRes.json();
+        setLoans(data.loans || []);
+      }
     } catch (error) {
-      console.error('Failed to fetch transactions:', error);
+      console.error('Failed to fetch data:', error);
     } finally {
       setLoading(false);
     }
@@ -55,12 +65,27 @@ export default function DashboardPage() {
     const expenses = transactions
       .filter(t => !t.isIncome)
       .reduce((sum, t) => sum + t.amount, 0);
-    return { income, expenses, wealth: income - expenses };
+    
+    // Calculate pending EMIs (current + next month)
+    const pendingEMITotal = calculateTotalPendingEMI(loans);
+    
+    // Total Wealth = Income - Expenses - Pending EMIs
+    const wealth = income - expenses - pendingEMITotal;
+    
+    return { income, expenses, wealth, pendingEMITotal };
   };
 
   const stats = calculateStats();
-  const groupedTransactions = groupTransactionsByMonth(sortByDate(transactions));
-  const sortedMonths = Array.from(groupedTransactions.keys()).sort().reverse();
+  
+  // Get pending EMIs
+  const pendingEMIs = getPendingEMIs(loans);
+  
+  // Combine transactions and pending EMIs for display
+  type DisplayItem = Transaction | PendingEMI;
+  const allItems: DisplayItem[] = [...transactions, ...pendingEMIs];
+  const sortedItems = sortByDate(allItems) as DisplayItem[];
+  const groupedItems = groupTransactionsByMonth(sortedItems);
+  const sortedMonths = Array.from(groupedItems.keys()).sort().reverse();
 
   if (loading) {
     return (
@@ -72,54 +97,53 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white p-6 shadow-lg">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold">Expense Tracker</h1>
+      {/* Header with TOTAL WEALTH */}
+      <div className="bg-gradient-to-br from-purple-600 via-blue-600 to-indigo-600 text-white shadow-xl">
+        <div className="max-w-4xl mx-auto px-6 py-8">
+          {/* Top Bar */}
+          <div className="flex justify-between items-center mb-8">
+            <h1 className="text-xl font-semibold">Expense Tracker</h1>
             <div className="flex gap-2">
               <button
                 onClick={() => router.push('/loans')}
-                className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg transition"
+                className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition"
+                title="Loans & EMIs"
               >
-                Loans
+                <Briefcase size={20} />
               </button>
               <button
                 onClick={handleLogout}
                 className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition"
+                title="Logout"
               >
                 <LogOut size={20} />
               </button>
             </div>
           </div>
 
-          {/* Wealth Display */}
+          {/* Total Wealth Display */}
           <div className="text-center mb-6">
-            <div className="text-sm opacity-90 mb-1">Total Wealth</div>
-            <div className="text-5xl font-bold mb-2">
-              {formatCurrency(stats.wealth)}
+            <div className="text-sm font-medium opacity-80 uppercase tracking-wider mb-2">
+              Total Wealth
             </div>
-          </div>
-
-          {/* Income & Expenses */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingUp size={20} className="text-green-300" />
-                <span className="text-sm opacity-90">Income</span>
-              </div>
-              <div className="text-2xl font-bold text-green-300">
-                {formatCurrency(stats.income)}
-              </div>
+            <div className="text-6xl font-bold mb-4">
+              ₹{stats.wealth.toFixed(2)}
             </div>
-            <div className="bg-white/10 backdrop-blur rounded-xl p-4">
-              <div className="flex items-center gap-2 mb-2">
-                <TrendingDown size={20} className="text-red-300" />
-                <span className="text-sm opacity-90">Expenses</span>
+            <div className="flex justify-center gap-6 text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-green-300 font-semibold">Income:</span>
+                <span className="font-medium">₹{stats.income.toFixed(2)}</span>
               </div>
-              <div className="text-2xl font-bold text-red-300">
-                {formatCurrency(stats.expenses)}
+              <div className="flex items-center gap-2">
+                <span className="text-red-300 font-semibold">Expenses:</span>
+                <span className="font-medium">₹{stats.expenses.toFixed(2)}</span>
               </div>
+              {stats.pendingEMITotal > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-orange-300 font-semibold">Pending EMIs:</span>
+                  <span className="font-medium">₹{stats.pendingEMITotal.toFixed(2)}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -133,74 +157,119 @@ export default function DashboardPage() {
               setIsIncome(true);
               setShowAddDialog(true);
             }}
-            className="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition shadow-lg"
+            className="flex-1 bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition shadow-md"
           >
             <Plus size={20} />
-            Add Income
+            Income
           </button>
           <button
             onClick={() => {
               setIsIncome(false);
               setShowAddDialog(true);
             }}
-            className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition shadow-lg"
+            className="flex-1 bg-red-500 hover:bg-red-600 text-white font-semibold py-3 rounded-xl flex items-center justify-center gap-2 transition shadow-md"
           >
             <Plus size={20} />
-            Add Expense
+            Expense
           </button>
         </div>
       </div>
 
-      {/* Transactions List */}
+      {/* Transactions List with Pending EMIs */}
       <div className="max-w-4xl mx-auto px-6 pb-8">
         {sortedMonths.length === 0 ? (
-          <div className="text-center py-12">
-            <Wallet size={48} className="mx-auto text-gray-400 mb-4" />
-            <p className="text-gray-500">No transactions yet</p>
-            <p className="text-sm text-gray-400 mt-1">Add your first transaction above</p>
+          <div className="text-center py-12 bg-white rounded-2xl shadow-sm">
+            <div className="text-5xl mb-4">💰</div>
+            <p className="text-gray-600 font-medium">No transactions yet</p>
+            <p className="text-sm text-gray-400 mt-2">Start tracking by adding income or expenses</p>
           </div>
         ) : (
           sortedMonths.map(monthKey => {
-            const monthTransactions = groupedTransactions.get(monthKey) || [];
+            const monthItems = groupedItems.get(monthKey) || [];
+            const monthDate = new Date(monthKey + '-01');
+            
             return (
-              <div key={monthKey} className="mb-6">
-                <div className="text-sm font-semibold text-gray-600 mb-3 uppercase">
-                  {new Date(monthKey + '-01').toLocaleDateString('en-US', {
+              <div key={monthKey} className="mb-8">
+                {/* Month Header */}
+                <div className="text-lg font-bold text-gray-700 mb-3">
+                  {monthDate.toLocaleDateString('en-US', {
                     month: 'long',
                     year: 'numeric',
                   })}
                 </div>
+                
+                {/* Items */}
                 <div className="space-y-2">
-                  {monthTransactions.map(transaction => (
-                    <div
-                      key={transaction.id}
-                      className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition"
-                    >
-                      <div className="flex justify-between items-start">
-                        <div className="flex-1">
-                          <div className="font-semibold text-gray-800">
-                            {transaction.category}
-                          </div>
-                          {transaction.note && (
-                            <div className="text-sm text-gray-500 mt-1">
-                              {transaction.note}
+                  {monthItems.map(item => {
+                    // Check if it's a pending EMI
+                    const isPending = 'isPending' in item && item.isPending;
+                    
+                    if (isPending) {
+                      const pendingItem = item as PendingEMI;
+                      const dueDate = new Date(pendingItem.date);
+                      const monthName = dueDate.toLocaleDateString('en-US', { month: 'short' });
+                      
+                      return (
+                        <div
+                          key={pendingItem.id}
+                          className="bg-orange-50 border-l-4 border-orange-400 rounded-xl p-4 shadow-sm"
+                        >
+                          <div className="flex justify-between items-start">
+                            <div className="flex-1">
+                              <div className="font-semibold text-orange-900">
+                                Pending EMI
+                              </div>
+                              <div className="text-sm text-orange-700 mt-1">
+                                Loan: {pendingItem.loanName}
+                              </div>
+                              <div className="text-xs text-orange-600 mt-1">
+                                Due 1 {monthName}
+                              </div>
                             </div>
-                          )}
-                          <div className="text-xs text-gray-400 mt-1">
-                            {new Date(transaction.date).toLocaleDateString()}
+                            <div className="text-xl font-bold text-orange-600">
+                              ₹{pendingItem.amount.toFixed(2)}
+                            </div>
                           </div>
                         </div>
-                        <div
-                          className={`text-xl font-bold ${
-                            transaction.isIncome ? 'text-green-600' : 'text-red-600'
-                          }`}
-                        >
-                          {transaction.isIncome ? '+' : '-'}
-                          {formatCurrency(transaction.amount)}
+                      );
+                    }
+                    
+                    // Regular transaction
+                    const transaction = item as Transaction;
+                    return (
+                      <div
+                        key={transaction.id}
+                        className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition"
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1">
+                            <div className="font-semibold text-gray-800">
+                              {transaction.category}
+                            </div>
+                            {transaction.note && (
+                              <div className="text-sm text-gray-500 mt-1">
+                                {transaction.note}
+                              </div>
+                            )}
+                            <div className="text-xs text-gray-400 mt-1">
+                              {new Date(transaction.date).toLocaleDateString('en-US', {
+                                day: 'numeric',
+                                month: 'short',
+                                year: 'numeric',
+                              })}
+                            </div>
+                          </div>
+                          <div
+                            className={`text-xl font-bold ${
+                              transaction.isIncome ? 'text-green-600' : 'text-red-600'
+                            }`}
+                          >
+                            {transaction.isIncome ? '+' : '-'}₹{transaction.amount.toFixed(2)}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -215,7 +284,7 @@ export default function DashboardPage() {
           onClose={() => setShowAddDialog(false)}
           onSuccess={() => {
             setShowAddDialog(false);
-            fetchTransactions();
+            fetchData();
           }}
         />
       )}
