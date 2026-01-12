@@ -39,6 +39,9 @@ export default function AuthPage() {
         // Switch to login after registration
         setIsLogin(true);
         setError('');
+        setEmail('');
+        setPassword('');
+        setLoading(false);
         alert('Account created! Please login.');
       }
     } catch (err) {
@@ -70,7 +73,7 @@ export default function AuthPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition text-gray-900 placeholder-gray-400"
               placeholder="your@email.com"
             />
           </div>
@@ -86,7 +89,7 @@ export default function AuthPage() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={8}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition"
+              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent outline-none transition text-gray-900 placeholder-gray-400"
               placeholder="••••••••"
             />
             {!isLogin && (
