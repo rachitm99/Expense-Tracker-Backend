@@ -42,7 +42,8 @@ REDIS_URL=redis://default:password@host:port
 
 # Better Auth Configuration
 BETTER_AUTH_SECRET=your-secret-key-min-32-chars-change-this-in-production
-BETTER_AUTH_URL=http://localhost:3000
+BETTER_AUTH_URL=http://localhost:3000  # For development
+# BETTER_AUTH_URL=https://etb.wahr.in  # For production
 ```
 
 **Your database credentials are already configured in `.env.local`.**

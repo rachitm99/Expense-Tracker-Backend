@@ -1,13 +1,34 @@
 # Deployment Guide - Vercel
 
-Complete guide for deploying your Expense Tracker backend to Vercel.
+Complete guide for deploying your Expense Tracker backend to Vercel with custom domain **etb.wahr.in**.
+
+## 🌐 Custom Domain Setup
+
+This project is configured for: **https://etb.wahr.in**
+
+### Configure Domain in Vercel
+
+1. Go to your Vercel project → **Settings** → **Domains**
+2. Add domain: `etb.wahr.in`
+3. Configure DNS at your domain provider (Wahr):
+   ```
+   Type: CNAME
+   Name: etb
+   Value: cname.vercel-dns.com
+   ```
+4. Wait 5-10 minutes for DNS propagation
+5. Vercel auto-issues SSL certificate
+
+### Production Environment Variable
+
+Ensure this is set in Vercel:
+```
+BETTER_AUTH_URL=https://etb.wahr.in
+```
 
 ## ⚠️ Important: Data Persistence
 
-**Vercel's filesystem is ephemeral** - files written to the filesystem (including `data/` folder) will be lost when:
-- Deploying a new version
-- Function instances are recycled
-- Scaling events occur
+**Note:** This project now uses PostgreSQL + Redis (not filesystem), so data persists across deployments.
 
 ### Recommended Solutions
 
@@ -85,8 +106,9 @@ In the configuration screen, add:
 | Name | Value |
 |------|-------|
 | `BETTER_AUTH_SECRET` | Your secure random secret (min 32 chars) |
-| `BETTER_AUTH_URL` | `https://your-project-name.vercel.app` |
-| `DATA_PATH` | `./data` |
+| `BETTER_AUTH_URL` | `https://etb.wahr.in` |
+| `DATABASE_URL` | Your PostgreSQL connection string (from Neon) |
+| `REDIS_URL` | Your Redis connection string (from Redis Labs) |
 
 **Generate secret:**
 ```bash
@@ -96,7 +118,7 @@ openssl rand -base64 32
 4. **Deploy:**
    - Click "Deploy"
    - Wait for build to complete (~2 minutes)
-   - Your app is live!
+   - Your app will be live at https://etb.wahr.in (after domain setup)
 
 ### Method 2: Deploy via Vercel CLI
 
@@ -133,7 +155,13 @@ vercel env add BETTER_AUTH_SECRET
 # Paste your secret when prompted
 
 vercel env add BETTER_AUTH_URL
-# Enter your production URL (shown after first deploy)
+# Enter: https://etb.wahr.in
+
+vercel env add DATABASE_URL
+# Paste your PostgreSQL connection string
+
+vercel env add REDIS_URL
+# Paste your Redis connection string
 ```
 
 5. **Deploy to Production:**
@@ -141,6 +169,11 @@ vercel env add BETTER_AUTH_URL
 ```bash
 vercel --prod
 ```
+
+6. **Configure Custom Domain:**
+   - Go to Vercel dashboard → Settings → Domains
+   - Add `etb.wahr.in`
+   - Update DNS as shown above
 
 ---
 
