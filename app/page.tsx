@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, LogOut, Briefcase } from 'lucide-react';
+import { Plus, LogOut, Briefcase, Trash2 } from 'lucide-react';
 import { Transaction, Loan } from '@/types';
 import { formatCurrency, groupTransactionsByMonth, sortByDate, getPendingEMIs, calculateTotalPendingEMI, PendingEMI } from '@/lib/utils';
 
@@ -56,6 +56,23 @@ export default function DashboardPage() {
   const handleLogout = async () => {
     await fetch('/api/auth/logout', { method: 'POST' });
     router.push('/auth');
+  };
+
+  const handleDeleteTransaction = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this transaction?')) return;
+
+    try {
+      const response = await fetch(`/api/transactions/${id}`, { method: 'DELETE' });
+      if (response.ok) {
+        // refresh data
+        fetchData();
+      } else {
+        alert('Failed to delete transaction');
+      }
+    } catch (error) {
+      alert('Network error');
+      console.error('Delete transaction error:', error);
+    }
   };
 
   const calculateStats = () => {
@@ -259,12 +276,21 @@ export default function DashboardPage() {
                               })}
                             </div>
                           </div>
-                          <div
-                            className={`text-xl font-bold ${
-                              transaction.isIncome ? 'text-green-600' : 'text-red-600'
-                            }`}
-                          >
-                            {transaction.isIncome ? '+' : '-'}₹{transaction.amount.toFixed(2)}
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => handleDeleteTransaction(transaction.id)}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition"
+                              title="Delete transaction"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                            <div
+                              className={`text-xl font-bold ${
+                                transaction.isIncome ? 'text-green-600' : 'text-red-600'
+                              }`}
+                            >
+                              {transaction.isIncome ? '+' : '-'}₹{transaction.amount.toFixed(2)}
+                            </div>
                           </div>
                         </div>
                       </div>
