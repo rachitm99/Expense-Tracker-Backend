@@ -11,7 +11,7 @@ export function middleware(request: NextRequest) {
   }
 
   // Protected routes
-  if (pathname === '/' || pathname.startsWith('/loans')) {
+  if (pathname === '/') {
     if (!session) {
       return NextResponse.redirect(new URL('/auth', request.url));
     }
@@ -21,5 +21,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/', '/loans/:path*', '/api/transactions/:path*', '/api/loans/:path*', '/api/sync/:path*'],
+  matcher: ['/', '/api/transactions/:path*', '/api/sync/:path*'],
 };

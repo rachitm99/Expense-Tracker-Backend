@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { Transaction, Loan } from '@/types';
+import { Transaction } from '@/types';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -125,125 +125,11 @@ export async function getTransactionsSince(userId: string, timestamp: string): P
   })) as Transaction[];
 }
 
-// Loan Storage
-export async function readLoans(userId: string): Promise<Loan[]> {
-  const result = await pool.query(
-    `SELECT 
-      id,
-      user_id as "userId",
-      name,
-      principal,
-      interest_rate as "interestRate",
-      duration_months as "durationMonths",
-      start_date as "startDate",
-      emi_amount as "emiAmount",
-      total_interest as "totalInterest",
-      payments,
-      created_at as "createdAt",
-      updated_at as "updatedAt"
-    FROM loans
-    WHERE user_id = $1 AND deleted_at IS NULL
-    ORDER BY created_at DESC`,
-    [userId]
-  );
-  
-  return result.rows.map(row => ({
-    ...row,
-    principal: parseFloat(row.principal),
-    interestRate: parseFloat(row.interestRate),
-    emiAmount: parseFloat(row.emiAmount),
-    totalInterest: parseFloat(row.totalInterest),
-  })) as Loan[];
-}
-
-export async function addLoan(userId: string, loan: Loan): Promise<void> {
-  await pool.query(
-    `INSERT INTO loans (
-      id, user_id, name, principal, interest_rate, duration_months,
-      start_date, emi_amount, total_interest, payments, created_at, updated_at
-    )
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-    [
-      loan.id, userId, loan.name, loan.principal, loan.interestRate,
-      loan.durationMonths, loan.startDate, loan.emiAmount, loan.totalInterest,
-      JSON.stringify(loan.payments), loan.createdAt, loan.updatedAt
-    ]
-  );
-}
-
-export async function updateLoan(userId: string, loan: Loan): Promise<void> {
-  await pool.query(
-    `UPDATE loans
-    SET 
-      name = $1,
-      principal = $2,
-      interest_rate = $3,
-      duration_months = $4,
-      start_date = $5,
-      emi_amount = $6,
-      total_interest = $7,
-      payments = $8,
-      updated_at = $9
-    WHERE id = $10 AND user_id = $11`,
-    [
-      loan.name, loan.principal, loan.interestRate, loan.durationMonths,
-      loan.startDate, loan.emiAmount, loan.totalInterest,
-      JSON.stringify(loan.payments), loan.updatedAt, loan.id, userId
-    ]
-  );
-}
-
-export async function deleteLoan(userId: string, loanId: string): Promise<void> {
-  await pool.query(
-    'UPDATE loans SET deleted_at = NOW() WHERE id = $1 AND user_id = $2',
-    [loanId, userId]
-  );
-}
-
-export async function getLoansSince(userId: string, timestamp: string): Promise<Loan[]> {
-  const result = await pool.query(
-    `SELECT 
-      id,
-      user_id as "userId",
-      name,
-      principal,
-      interest_rate as "interestRate",
-      duration_months as "durationMonths",
-      start_date as "startDate",
-      emi_amount as "emiAmount",
-      total_interest as "totalInterest",
-      payments,
-      created_at as "createdAt",
-      updated_at as "updatedAt"
-    FROM loans
-    WHERE user_id = $1 
-      AND updated_at > $2
-      AND deleted_at IS NULL
-    ORDER BY updated_at ASC`,
-    [userId, timestamp]
-  );
-  
-  return result.rows.map(row => ({
-    ...row,
-    principal: parseFloat(row.principal),
-    interestRate: parseFloat(row.interestRate),
-    emiAmount: parseFloat(row.emiAmount),
-    totalInterest: parseFloat(row.totalInterest),
-  })) as Loan[];
-}
-
 // Deleted Items Tracking
 export async function trackDeletedTransaction(userId: string, transactionId: string): Promise<void> {
   await pool.query(
     'INSERT INTO deleted_items (user_id, item_type, item_id, deleted_at) VALUES ($1, $2, $3, NOW())',
     [userId, 'transaction', transactionId]
-  );
-}
-
-export async function trackDeletedLoan(userId: string, loanId: string): Promise<void> {
-  await pool.query(
-    'INSERT INTO deleted_items (user_id, item_type, item_id, deleted_at) VALUES ($1, $2, $3, NOW())',
-    [userId, 'loan', loanId]
   );
 }
 
@@ -256,20 +142,6 @@ export async function getDeletedTransactionsSince(userId: string, timestamp: str
       AND deleted_at > $3
     ORDER BY deleted_at ASC`,
     [userId, 'transaction', timestamp]
-  );
-  
-  return result.rows.map(row => row.item_id);
-}
-
-export async function getDeletedLoansSince(userId: string, timestamp: string): Promise<string[]> {
-  const result = await pool.query(
-    `SELECT item_id
-    FROM deleted_items
-    WHERE user_id = $1
-      AND item_type = $2
-      AND deleted_at > $3
-    ORDER BY deleted_at ASC`,
-    [userId, 'loan', timestamp]
   );
   
   return result.rows.map(row => row.item_id);

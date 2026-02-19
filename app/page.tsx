@@ -2,14 +2,13 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, LogOut, Briefcase, Trash2 } from 'lucide-react';
-import { Transaction, Loan } from '@/types';
-import { formatCurrency, groupTransactionsByMonth, sortByDate, getPendingEMIs, calculateTotalPendingEMI, PendingEMI } from '@/lib/utils';
+import { Plus, LogOut, Trash2 } from 'lucide-react';
+import { Transaction } from '@/types';
+import { formatCurrency, groupTransactionsByMonth, sortByDate } from '@/lib/utils';
 
 export default function DashboardPage() {
   const router = useRouter();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [isIncome, setIsIncome] = useState(false);
@@ -32,19 +31,11 @@ export default function DashboardPage() {
 
   const fetchData = async () => {
     try {
-      const [transactionsRes, loansRes] = await Promise.all([
-        fetch('/api/transactions'),
-        fetch('/api/loans'),
-      ]);
+      const response = await fetch('/api/transactions');
 
-      if (transactionsRes.ok) {
-        const data = await transactionsRes.json();
+      if (response.ok) {
+        const data = await response.json();
         setTransactions(data.transactions || []);
-      }
-
-      if (loansRes.ok) {
-        const data = await loansRes.json();
-        setLoans(data.loans || []);
       }
     } catch (error) {
       console.error('Failed to fetch data:', error);
@@ -83,26 +74,17 @@ export default function DashboardPage() {
       .filter(t => !t.isIncome)
       .reduce((sum, t) => sum + t.amount, 0);
     
-    // Calculate pending EMIs (current + next month)
-    const pendingEMITotal = calculateTotalPendingEMI(loans);
+    // Total Wealth = Income - Expenses
+    const wealth = income - expenses;
     
-    // Total Wealth = Income - Expenses - Pending EMIs
-    const wealth = income - expenses - pendingEMITotal;
-    
-    return { income, expenses, wealth, pendingEMITotal };
+    return { income, expenses, wealth };
   };
 
   const stats = calculateStats();
   
-  // Get pending EMIs
-  const pendingEMIs = getPendingEMIs(loans);
-  
-  // Combine transactions and pending EMIs for display
-  type DisplayItem = Transaction | PendingEMI;
-  const allItems: DisplayItem[] = [...transactions, ...pendingEMIs];
-  const sortedItems = sortByDate(allItems) as DisplayItem[];
-  const groupedItems = groupTransactionsByMonth(sortedItems);
-  const sortedMonths = Array.from(groupedItems.keys()).sort().reverse();
+  // Group transactions by month
+  const groupedTransactions = groupTransactionsByMonth(sortByDate(transactions));
+  const sortedMonths = Array.from(groupedTransactions.keys()).sort().reverse();
 
   if (loading) {
     return (
@@ -121,13 +103,6 @@ export default function DashboardPage() {
           <div className="flex justify-between items-center mb-8">
             <h1 className="text-xl font-semibold">Expense Tracker</h1>
             <div className="flex gap-2">
-              <button
-                onClick={() => router.push('/loans')}
-                className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition"
-                title="Loans & EMIs"
-              >
-                <Briefcase size={20} />
-              </button>
               <button
                 onClick={handleLogout}
                 className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition"
@@ -155,12 +130,6 @@ export default function DashboardPage() {
                 <span className="text-red-300 font-semibold">Expenses:</span>
                 <span className="font-medium">₹{stats.expenses.toFixed(2)}</span>
               </div>
-              {stats.pendingEMITotal > 0 && (
-                <div className="flex items-center gap-2">
-                  <span className="text-orange-300 font-semibold">Pending EMIs:</span>
-                  <span className="font-medium">₹{stats.pendingEMITotal.toFixed(2)}</span>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -192,7 +161,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Transactions List with Pending EMIs */}
+      {/* Transactions List */}
       <div className="max-w-4xl mx-auto px-6 pb-8">
         {sortedMonths.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-2xl shadow-sm">
@@ -202,7 +171,7 @@ export default function DashboardPage() {
           </div>
         ) : (
           sortedMonths.map(monthKey => {
-            const monthItems = groupedItems.get(monthKey) || [];
+            const monthTransactions = groupedTransactions.get(monthKey) || [];
             const monthDate = new Date(monthKey + '-01');
             
             return (
@@ -215,87 +184,50 @@ export default function DashboardPage() {
                   })}
                 </div>
                 
-                {/* Items */}
+                {/* Transactions */}
                 <div className="space-y-2">
-                  {monthItems.map(item => {
-                    // Check if it's a pending EMI
-                    const isPending = 'isPending' in item && item.isPending;
-                    
-                    if (isPending) {
-                      const pendingItem = item as PendingEMI;
-                      const dueDate = new Date(pendingItem.date);
-                      const monthName = dueDate.toLocaleDateString('en-US', { month: 'short' });
-                      
-                      return (
-                        <div
-                          key={pendingItem.id}
-                          className="bg-orange-50 border-l-4 border-orange-400 rounded-xl p-4 shadow-sm"
-                        >
-                          <div className="flex justify-between items-start">
-                            <div className="flex-1">
-                              <div className="font-semibold text-orange-900">
-                                Pending EMI
-                              </div>
-                              <div className="text-sm text-orange-700 mt-1">
-                                Loan: {pendingItem.loanName}
-                              </div>
-                              <div className="text-xs text-orange-600 mt-1">
-                                Due 1 {monthName}
-                              </div>
+                  {monthTransactions.map(transaction => (
+                    <div
+                      key={transaction.id}
+                      className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <div className="font-semibold text-gray-800">
+                            {transaction.category}
+                          </div>
+                          {transaction.note && (
+                            <div className="text-sm text-gray-500 mt-1">
+                              {transaction.note}
                             </div>
-                            <div className="text-xl font-bold text-orange-600">
-                              ₹{pendingItem.amount.toFixed(2)}
-                            </div>
+                          )}
+                          <div className="text-xs text-gray-400 mt-1">
+                            {new Date(transaction.date).toLocaleDateString('en-US', {
+                              day: 'numeric',
+                              month: 'short',
+                              year: 'numeric',
+                            })}
                           </div>
                         </div>
-                      );
-                    }
-                    
-                    // Regular transaction
-                    const transaction = item as Transaction;
-                    return (
-                      <div
-                        key={transaction.id}
-                        className="bg-white rounded-xl p-4 shadow-sm hover:shadow-md transition"
-                      >
-                        <div className="flex justify-between items-start">
-                          <div className="flex-1">
-                            <div className="font-semibold text-gray-800">
-                              {transaction.category}
-                            </div>
-                            {transaction.note && (
-                              <div className="text-sm text-gray-500 mt-1">
-                                {transaction.note}
-                              </div>
-                            )}
-                            <div className="text-xs text-gray-400 mt-1">
-                              {new Date(transaction.date).toLocaleDateString('en-US', {
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric',
-                              })}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-3">
-                            <button
-                              onClick={() => handleDeleteTransaction(transaction.id)}
-                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition"
-                              title="Delete transaction"
-                            >
-                              <Trash2 size={16} />
-                            </button>
-                            <div
-                              className={`text-xl font-bold ${
-                                transaction.isIncome ? 'text-green-600' : 'text-red-600'
-                              }`}
-                            >
-                              {transaction.isIncome ? '+' : '-'}₹{transaction.amount.toFixed(2)}
-                            </div>
+                        <div className="flex items-center gap-3">
+                          <button
+                            onClick={() => handleDeleteTransaction(transaction.id)}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition"
+                            title="Delete transaction"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                          <div
+                            className={`text-xl font-bold ${
+                              transaction.isIncome ? 'text-green-600' : 'text-red-600'
+                            }`}
+                          >
+                            {transaction.isIncome ? '+' : '-'}₹{transaction.amount.toFixed(2)}
                           </div>
                         </div>
                       </div>
-                    );
-                  })}
+                    </div>
+                  ))}
                 </div>
               </div>
             );
