@@ -174,14 +174,28 @@ export default function DashboardPage() {
             const monthTransactions = groupedTransactions.get(monthKey) || [];
             const monthDate = new Date(monthKey + '-01');
             
+            // Calculate monthly income and expenses
+            const monthIncome = monthTransactions
+              .filter(t => t.isIncome)
+              .reduce((sum, t) => sum + t.amount, 0);
+            const monthExpenses = monthTransactions
+              .filter(t => !t.isIncome)
+              .reduce((sum, t) => sum + t.amount, 0);
+            const monthBalance = monthIncome - monthExpenses;
+            
             return (
               <div key={monthKey} className="mb-8">
                 {/* Month Header */}
-                <div className="text-lg font-bold text-gray-700 mb-3">
-                  {monthDate.toLocaleDateString('en-US', {
-                    month: 'long',
-                    year: 'numeric',
-                  })}
+                <div className="flex justify-between items-center mb-3">
+                  <div className="text-lg font-bold text-gray-700">
+                    {monthDate.toLocaleDateString('en-US', {
+                      month: 'long',
+                      year: 'numeric',
+                    })}
+                  </div>
+                  <div className={`text-lg font-bold ${monthBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {monthBalance >= 0 ? '+' : ''}₹{monthBalance.toFixed(2)}
+                  </div>
                 </div>
                 
                 {/* Transactions */}
